@@ -1,0 +1,44 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Milk & More",
+        "description": "Sign in with the email and password you use on milkandmore.co.uk. This is an unofficial integration that reads the website.",
+        "data": {
+          "email": "Email",
+          "password": "Password"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Sign in to Milk & More again",
+        "description": "Milk & More no longer accepts the saved password for {email}. Enter the current password.",
+        "data": {
+          "password": "Password"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Milk & More rejected that email or password.",
+      "cannot_connect": "Couldn't reach milkandmore.co.uk, or the website layout has changed. Check the logs."
+    },
+    "abort": {
+      "already_configured": "This Milk & More account is already set up.",
+      "reauth_successful": "Signed in again."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "next_delivery": { "name": "Next delivery" },
+      "next_delivery_items": { "name": "Next delivery items" },
+      "next_delivery_total": { "name": "Next delivery total" },
+      "order_cutoff": { "name": "Order cut-off" }
+    },
+    "binary_sensor": {
+      "delivery_tomorrow": { "name": "Delivery tomorrow" },
+      "next_delivery_editable": { "name": "Next delivery editable" }
+    },
+    "calendar": {
+      "deliveries": { "name": "Deliveries" }
+    }
+  }
+}
