@@ -28,17 +28,56 @@
   },
   "entity": {
     "sensor": {
-      "next_delivery": { "name": "Next delivery" },
-      "next_delivery_items": { "name": "Next delivery items" },
-      "next_delivery_total": { "name": "Next delivery total" },
-      "order_cutoff": { "name": "Order cut-off" }
+      "next_delivery": {
+        "name": "Next delivery"
+      },
+      "next_delivery_items": {
+        "name": "Next delivery items"
+      },
+      "next_delivery_total": {
+        "name": "Next delivery total"
+      },
+      "order_cutoff": {
+        "name": "Order cut-off"
+      },
+      "skipped_deliveries": {
+        "name": "Skipped deliveries"
+      }
     },
     "binary_sensor": {
-      "delivery_tomorrow": { "name": "Delivery tomorrow" },
-      "next_delivery_editable": { "name": "Next delivery editable" }
+      "delivery_tomorrow": {
+        "name": "Delivery tomorrow"
+      },
+      "next_delivery_editable": {
+        "name": "Next delivery editable"
+      }
     },
     "calendar": {
-      "deliveries": { "name": "Deliveries" }
+      "deliveries": {
+        "name": "Deliveries"
+      }
+    }
+  },
+  "services": {
+    "skip_deliveries": {
+      "name": "Skip deliveries",
+      "description": "Skip the Milk & More deliveries on these dates, the same as the website's Skip Deliveries calendar. Days already skipped are left alone; days past the 21:00 cut-off are reported as too late.",
+      "fields": {
+        "dates": {
+          "name": "Dates",
+          "description": "Delivery dates to skip, e.g. 2026-10-19."
+        }
+      }
+    },
+    "unskip_deliveries": {
+      "name": "Restore deliveries",
+      "description": "Undo a skip: put the Milk & More deliveries on these dates back. Only works until 21:00 the night before.",
+      "fields": {
+        "dates": {
+          "name": "Dates",
+          "description": "Delivery dates to restore, e.g. 2026-10-19."
+        }
+      }
     }
   }
 }

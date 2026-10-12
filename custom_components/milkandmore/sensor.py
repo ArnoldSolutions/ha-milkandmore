@@ -25,6 +25,7 @@ async def async_setup_entry(
             NextDeliveryItemsSensor(coordinator),
             NextDeliveryTotalSensor(coordinator),
             OrderCutoffSensor(coordinator),
+            SkippedDeliveriesSensor(coordinator),
         ]
     )
 
@@ -119,3 +120,20 @@ class OrderCutoffSensor(MilkAndMoreEntity, SensorEntity):
             "has_items": day.has_items,
             "summary": day.summary(),
         }
+
+
+class SkippedDeliveriesSensor(MilkAndMoreEntity, SensorEntity):
+    """How many upcoming delivery days are skipped on the website."""
+
+    _attr_icon = "mdi:truck-remove-outline"
+
+    def __init__(self, coordinator: MilkAndMoreCoordinator) -> None:
+        super().__init__(coordinator, "skipped_deliveries")
+
+    @property
+    def native_value(self) -> int:
+        return len(self.coordinator.data.skipped)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return {"dates": self.coordinator.data.skipped}

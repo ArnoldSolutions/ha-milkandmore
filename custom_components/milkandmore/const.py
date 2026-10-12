@@ -8,6 +8,7 @@ BASE_URL = "https://www.milkandmore.co.uk"
 LOGIN_PAGE = "/login"
 LOGIN_POST = "/j_spring_security_check"
 WEEKLY_ORDER = "/my-account/my-orders-new/weekly-order"
+SKIP_PAGE = "/my-account/skip-delivery"
 
 # How often to poll the website.
 UPDATE_INTERVAL = timedelta(hours=2)

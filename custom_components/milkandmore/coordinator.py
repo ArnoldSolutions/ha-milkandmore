@@ -25,6 +25,7 @@ class MilkAndMoreData:
     days: list[DeliveryDay]
     next_delivery: DeliveryDay | None
     next_editable_day: DeliveryDay | None
+    skipped: list[str]  # ISO dates the website has marked as skipped (today onwards)
 
     def day_for(self, when: date) -> DeliveryDay | None:
         return next((d for d in self.days if d.date == when), None)
@@ -63,6 +64,7 @@ class MilkAndMoreCoordinator(DataUpdateCoordinator[MilkAndMoreData]):
         try:
             for week in range(WEEKS_AHEAD + 1):
                 days.extend(await self.client.async_get_week(monday + timedelta(weeks=week)))
+            skipped_all = await self.client.async_get_skipped()
         except MilkAndMoreAuthError as err:
             raise ConfigEntryAuthFailed(str(err)) from err
         except MilkAndMoreError as err:
@@ -80,4 +82,5 @@ class MilkAndMoreCoordinator(DataUpdateCoordinator[MilkAndMoreData]):
             days=days,
             next_delivery=upcoming[0] if upcoming else None,
             next_editable_day=editable[0] if editable else None,
+            skipped=sorted(d for d in skipped_all if d >= today.isoformat()),
         )

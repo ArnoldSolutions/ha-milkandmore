@@ -2,7 +2,7 @@
 
 Reads your upcoming [Milk & More](https://www.milkandmore.co.uk) doorstep deliveries into Home Assistant.
 
-> **Unofficial.** Milk & More has no public API. This integration signs in to the website the same way a browser does and reads the *My Deliveries* page. It may break when Milk & More change their site, and automated access may not be allowed by their terms of use. Read-only: it never changes or skips an order.
+> **Unofficial.** Milk & More has no public API. This integration signs in to the website the same way a browser does and reads the *My Deliveries* page. It may break when Milk & More change their site, and automated access may not be allowed by their terms of use. It only changes your orders when you (or an automation you set up) call the skip / restore actions below.
 
 ## What you get
 
@@ -14,6 +14,7 @@ Reads your upcoming [Milk & More](https://www.milkandmore.co.uk) doorstep delive
 | `sensor.milk_more_order_cut_off` | timestamp | 21:00 the night before the next changeable delivery day |
 | `binary_sensor.milk_more_delivery_tomorrow` | on/off | Something is due tomorrow morning |
 | `binary_sensor.milk_more_next_delivery_editable` | on/off | Next delivery can still be changed online |
+| `sensor.milk_more_skipped_deliveries` | count | Upcoming days skipped on the website (attribute `dates`) |
 | `calendar.milk_more_deliveries` | calendar | All-day event on each delivery day, items in the description |
 
 It checks this week and the next two weeks every 2 hours.
@@ -30,6 +31,23 @@ Credentials are stored in Home Assistant's own config storage, not in this repos
 ## Install (manual)
 
 Copy `custom_components/milkandmore` into `/config/custom_components/`, restart, then add the integration as above.
+
+## Actions: skip and restore
+
+Both work like the website's **Skip Deliveries** calendar and only until 21:00 the night before each day.
+
+```yaml
+# ── Skip two deliveries ──
+action: milkandmore.skip_deliveries
+data:
+  dates: ["2026-10-19", "2026-10-23"]
+response_variable: result   # optional: changed / already / too_late / failed
+
+# ── Undo (put a delivery back) ──
+action: milkandmore.unskip_deliveries
+data:
+  dates: ["2026-10-23"]
+```
 
 ## Example: cut-off reminder
 

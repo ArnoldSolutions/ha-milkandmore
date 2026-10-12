@@ -17,7 +17,7 @@ from datetime import date, timedelta
 import aiohttp
 from bs4 import BeautifulSoup
 
-from .const import BASE_URL, LOGIN_PAGE, LOGIN_POST, USER_AGENT, WEEKLY_ORDER
+from .const import BASE_URL, LOGIN_PAGE, LOGIN_POST, SKIP_PAGE, USER_AGENT, WEEKLY_ORDER
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -83,6 +83,10 @@ class DeliveryDay:
     @property
     def is_complete(self) -> bool:
         return (self.status or "").strip().lower() == "complete"
+
+    @property
+    def is_skipped(self) -> bool:
+        return (self.status or "").strip().lower() == "skipped"
 
     def summary(self) -> str:
         return ", ".join(f"{i.quantity}× {i.name}" for i in self.items)
@@ -219,6 +223,26 @@ def parse_weekly_order(html: str, week_start: date) -> list[DeliveryDay]:
     return days
 
 
+_ISO_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def parse_skip_page(html: str) -> tuple[set[str], str]:
+    """Skipped dates and CSRF token from /my-account/skip-delivery."""
+    soup = BeautifulSoup(html, "html.parser")
+    form = soup.find("form", action=lambda a: bool(a) and "skip-delivery" in a)
+    if form is None:
+        raise MilkAndMoreError("Skip Deliveries form not found (the website may have changed)")
+    token_el = form.find("input", attrs={"name": "CSRFToken"})
+    if token_el is None or not token_el.get("value"):
+        raise MilkAndMoreError("Skip Deliveries form has no CSRF token")
+    data_el = soup.select_one(".js-calendar-data")
+    if data_el is None:
+        raise MilkAndMoreError("Skip Deliveries calendar data not found")
+    raw = data_el.get("value") or ""
+    skipped = {d.strip() for d in raw.split(",") if _ISO_RE.match(d.strip())}
+    return skipped, token_el["value"]
+
+
 class MilkAndMoreClient:
     """Logs in to milkandmore.co.uk and reads upcoming deliveries."""
 
@@ -274,12 +298,11 @@ class MilkAndMoreClient:
         self._logged_in = True
         _LOGGER.debug("Logged in to Milk & More")
 
-    async def _get_week_html(self, week_start: date) -> str | None:
-        """Return the fragment HTML, or None if the session has expired."""
-        url = f"{BASE_URL}{WEEKLY_ORDER}?weekStart={week_start.isoformat()}"
+    async def _get(self, path: str) -> str | None:
+        """GET a page; None if the session has expired (redirect or login page)."""
         try:
             async with self._session.get(
-                url,
+                BASE_URL + path,
                 headers={**self._headers, "X-Requested-With": "XMLHttpRequest"},
                 allow_redirects=False,
             ) as resp:
@@ -288,21 +311,92 @@ class MilkAndMoreClient:
                 resp.raise_for_status()
                 text = await resp.text()
         except aiohttp.ClientError as err:
-            raise MilkAndMoreError(f"Could not load deliveries: {err}") from err
+            raise MilkAndMoreError(f"Could not load {path}: {err}") from err
         if "j_spring_security_check" in text:
             return None  # we were handed the login page
         return text
 
-    async def async_get_week(self, week_start: date) -> list[DeliveryDay]:
-        """Fetch and parse one week (week_start must be a Monday)."""
+    async def _authed_get(self, path: str) -> str:
+        """GET a page, logging in (again) if needed."""
         if not self._logged_in:
             await self.login()
-        html = await self._get_week_html(week_start)
+        html = await self._get(path)
         if html is None:
             _LOGGER.debug("Milk & More session expired, logging in again")
             self._logged_in = False
             await self.login()
-            html = await self._get_week_html(week_start)
+            html = await self._get(path)
             if html is None:
                 raise MilkAndMoreAuthError("Could not stay logged in to Milk & More")
+        return html
+
+    async def async_get_week(self, week_start: date) -> list[DeliveryDay]:
+        """Fetch and parse one week (week_start must be a Monday)."""
+        html = await self._authed_get(f"{WEEKLY_ORDER}?weekStart={week_start.isoformat()}")
         return parse_weekly_order(html, week_start)
+
+    # ── Skip / un-skip (the website's "Skip Deliveries" calendar) ──
+
+    async def _get_skip_page(self) -> tuple[set[str], str]:
+        """Return (currently skipped ISO dates, CSRF token) from the skip page."""
+        html = await self._authed_get(SKIP_PAGE)
+        return parse_skip_page(html)
+
+    async def async_get_skipped(self) -> set[str]:
+        """ISO dates the website currently has marked as skipped."""
+        skipped, _token = await self._get_skip_page()
+        return skipped
+
+    async def _toggle(self, dates: list[str], token: str) -> None:
+        """POST the website's skip/un-skip toggle for the given ISO dates."""
+        # The website sends this as multipart form data; do the same.
+        try:
+            form = aiohttp.FormData(default_to_multipart=True)
+        except TypeError:  # older aiohttp
+            form = aiohttp.FormData()
+        form.add_field("skipDeliveryDates", ",".join(sorted(dates)))
+        form.add_field("CSRFToken", token)
+        try:
+            async with self._session.post(
+                BASE_URL + SKIP_PAGE,
+                data=form,
+                headers={
+                    **self._headers,
+                    "CSRFToken": token,
+                    "Referer": BASE_URL + SKIP_PAGE,
+                    "Origin": BASE_URL,
+                },
+                allow_redirects=False,
+            ) as resp:
+                if resp.status in (401, 403):
+                    raise MilkAndMoreError(f"Milk & More refused the change (HTTP {resp.status})")
+                if resp.status >= 400:
+                    raise MilkAndMoreError(f"Milk & More returned HTTP {resp.status}")
+                await resp.read()
+        except aiohttp.ClientError as err:
+            raise MilkAndMoreError(f"Could not send the change: {err}") from err
+
+    async def _change(self, dates: list[str], skip: bool) -> dict[str, list[str]]:
+        """Skip (or un-skip) the dates that need it, then read back and report."""
+        wanted = sorted({d for d in dates if _ISO_RE.match(d)})
+        before, token = await self._get_skip_page()
+        to_toggle = [d for d in wanted if (d not in before) == skip]
+        unchanged = [d for d in wanted if d not in to_toggle]
+        if to_toggle:
+            await self._toggle(to_toggle, token)
+        after = await self.async_get_skipped()
+        done = [d for d in to_toggle if (d in after) == skip]
+        failed = [d for d in to_toggle if d not in done]
+        if failed:
+            _LOGGER.warning(
+                "Milk & More did not %s %s", "skip" if skip else "restore", ", ".join(failed)
+            )
+        return {"changed": done, "already": unchanged, "failed": failed, "skipped_now": sorted(after)}
+
+    async def async_skip(self, dates: list[str]) -> dict[str, list[str]]:
+        """Skip deliveries on these ISO dates (dates already skipped are left alone)."""
+        return await self._change(dates, skip=True)
+
+    async def async_unskip(self, dates: list[str]) -> dict[str, list[str]]:
+        """Restore deliveries on these ISO dates (dates not skipped are left alone)."""
+        return await self._change(dates, skip=False)
